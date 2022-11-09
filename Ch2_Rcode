@@ -1,0 +1,612 @@
+  rm(list=ls())
+  gc()
+  ##############################
+  ### Simulation : Functions ###
+  ##############################
+  
+  #install.packages('devtools')
+  #library(devtools)
+  #install_github("mercaldo/MMLB", force=TRUE)
+  
+  ##############################################################################
+  
+  ####################################################
+  ### First derivative of log likelihood function  ###
+  ####################################################
+  
+  sbeta <- function(y, z, x, betaaux){
+    XX <- as.matrix(cbind(1, x, z))
+    beta0 <- betaaux[1]
+    beta1 <- betaaux[2:(p+1)]
+    beta2 <- betaaux[(p+2):(p+q+1)]
+    logit_xz <- beta0 + as.matrix(x) %*% beta1 + as.matrix(z) %*% beta2 # (Nx1 vector)
+    mu_xz <-  as.vector(exp(logit_xz)/(1 + exp(logit_xz))) # mu = XB
+    devlogfbeta <- (y - mu_xz)*XX
+    return(devlogfbeta)
+  }
+  
+
+  ##############################################################################
+  
+  stilda_sum_aux <- function(z, x, betaaux, thetahat, lambda){
+    N  <- nrow(x)
+    p <- ncol(x)
+    q <- ncol(z)
+    pq1 <- p + q + 1
+    
+    yseq <- c(0, 1)
+    yseqseq <- rep(yseq, N)
+    Ny <- length(yseq)
+    
+    beta0 <- betaaux[1]
+    beta1 <- betaaux[2:(p+1)]
+    beta2 <- betaaux[(p+2):(p+q+1)]
+    
+    theta0 <- thetahat[1]
+    theta1 <- thetahat[2:(q+1)]
+
+    logit_xz <- beta0 + as.matrix(x) %*% beta1 + as.matrix(z) %*% beta2# (Nx1 vector)
+    mu_xz <-  as.vector(exp(logit_xz)/(1 + exp(logit_xz)))
+    museq  <- rep(mu_xz, each = Ny)
+    fbseq <- dbinom(yseqseq, 1, museq)
+
+    logit_z <- theta0 + as.matrix(z) %*% theta1
+    mu_z <- exp(logit_z)/(1 + exp(logit_z))
+    muastseq <- rep(mu_z, each = Ny)
+    
+    XX <- as.matrix(cbind(1, x, z))
+    XXcol1 <- rep(1, Ny*N)
+    XXcol2e <- x[rep(seq_len(nrow(x)), each = Ny), ]
+    XXcol3e <- z[rep(seq_len(nrow(z)), each = Ny), ]
+    XXseq <- cbind(XXcol1, XXcol2e, XXcol3e) #OK
+    
+    sbetaseq <- (yseqseq - museq) * XXseq
+    
+    Ucol1_seq <- as.vector(yseqseq - muastseq)
+    Ucol2_seq <-  Ucol1_seq * XXcol3e
+    Ucol1_lambda_seq <- Ucol1_seq * lambda[1]
+    Ucol2_lambda_seq <- t(t(Ucol2_seq) * lambda[-1])
+    
+    Ulambda_seq <- Ucol1_lambda_seq + rowSums(Ucol2_lambda_seq)
+    
+    Maux_num <- sbetaseq * Ulambda_seq * fbseq
+    Numerator_ind <- array(t(as.matrix(Maux_num)), c(pq1, Ny, N))
+    Num <- apply(Numerator_ind, 3, rowSums) # Don't change 3
+    #Numerator_ind[1,,]
+    Maux_den <- Ulambda_seq * fbseq
+    Denominator_ind <- array(Maux_den, c(1, Ny, N))
+    Den0 <- apply(Denominator_ind, 3, rowSums) # Don't change 3
+    Den <- rep(1- Den0, each = pq1)
+    
+    final_sum <- rowSums(Num/Den)
+    final_sum
+  }
+  ##############################################################################
+  
+  slambda_sum_aux <- function(z, x, betaaux, thetahat, lambda){
+    N  <- nrow(x)
+    p <- ncol(x)
+    q <- ncol(z)
+    pl <- length(lambda)
+    pq1 <- p + q + 1
+    
+    yseq <- c(0, 1)
+    yseqseq <- rep(yseq, N)
+    Ny <- length(yseq)
+    
+    beta0 <- betaaux[1]
+    beta1 <- betaaux[2:(p+1)]
+    beta2 <- betaaux[(p+2):(p+q+1)]
+    
+    theta0 <- thetahat[1]
+    theta1 <- thetahat[2:(q+1)]
+    
+    logit_xz <- beta0 + as.matrix(x) %*% beta1 + as.matrix(z) %*% beta2 # (Nx1 vector)
+    mu_xz <-  as.vector(exp(logit_xz)/(1 + exp(logit_xz)))
+    museq  <- rep(mu_xz, each = Ny)
+    fbseq <- dbinom(yseqseq, 1, museq)
+    
+    logit_z <- theta0 + as.matrix(z) %*% theta1
+    mu_z <- exp(logit_z)/(1 + exp(logit_z))
+    muastseq <- rep(mu_z, each = Ny)
+    
+    XX <- as.matrix(cbind(1, x, z))
+    XXcol3e <- z[rep(seq_len(nrow(z)), each = Ny), ]
+    
+    Ucol1_seq <- as.vector(yseqseq - muastseq)
+    Ucol2_seq <-  Ucol1_seq * XXcol3e
+    Ucol1_lambda_seq <- Ucol1_seq * lambda[1]
+    Ucol2_lambda_seq <- t(t(Ucol2_seq) * lambda[-1])
+    
+    U_seq <- cbind(Ucol1_seq, Ucol2_seq)
+    Ulambda_seq <- Ucol1_lambda_seq + rowSums(Ucol2_lambda_seq)
+    
+    Maux_num <- U_seq * fbseq 
+    Numerator_ind <- array(t(as.matrix(Maux_num)), c(pl, Ny, N))
+    Num <- apply(Numerator_ind, 3, rowSums) # Don't change 3
+  
+    Maux_den <- Ulambda_seq * fbseq 
+    Denominator_ind <- array(Maux_den, c(1, Ny, N))
+    Den0 <- apply(Denominator_ind, 3, rowSums) # Don't change 3
+    Den <- rep(1- Den0, each = pl)
+    
+    final_sum <- rowSums(Num/Den)
+    final_sum
+  }
+  
+  ##############################################################################
+  
+  # Individual s_beta_asterisk in general
+  
+  stilda_aux <- function(z, x, betaaux, thetahat, lambda){
+    N  <- nrow(x)
+    p <- ncol(x)
+    q <- ncol(z)
+    pq1 <- p + q + 1
+    
+    yseq <- c(0, 1)
+    yseqseq <- rep(yseq, N)
+    Ny <- length(yseq)
+    
+    beta0 <- betaaux[1]
+    beta1 <- betaaux[2:(p+1)]
+    beta2 <- betaaux[(p+2):(p+q+1)]
+    
+    theta0 <- thetahat[1]
+    theta1 <- thetahat[2:(q+1)]
+    
+    logit_xz <- beta0 + as.matrix(x) %*% beta1 + as.matrix(z) %*% beta2 # (Nx1 vector)
+    mu_xz <-  as.vector(exp(logit_xz)/(1 + exp(logit_xz)))
+    museq  <- rep(mu_xz, each = Ny)
+    fbseq <- dbinom(yseqseq, 1, museq)
+    
+    logit_z <- theta0 + as.matrix(z) %*% theta1
+    mu_z <- exp(logit_z)/(1 + exp(logit_z))
+    muastseq <- rep(mu_z, each = Ny)
+    
+    XX <- as.matrix(cbind(1, x, z))
+    XXcol1 <- rep(1, Ny*N)
+    XXcol2e <- x[rep(seq_len(nrow(x)), each = Ny), ]
+    XXcol3e <- z[rep(seq_len(nrow(z)), each = Ny), ]
+    XXseq <- cbind(XXcol1, XXcol2e, XXcol3e) #OK
+    
+    sbetaseq <- (yseqseq - museq) * XXseq
+    
+    Ucol1_seq <- as.vector(yseqseq - muastseq)
+    Ucol2_seq <-  Ucol1_seq * XXcol3e
+    Ucol1_lambda_seq <- Ucol1_seq * lambda[1]
+    Ucol2_lambda_seq <- t(t(Ucol2_seq) * lambda[-1])
+    
+    Ulambda_seq <- Ucol1_lambda_seq + rowSums(Ucol2_lambda_seq)
+  
+    Maux_num <- sbetaseq * Ulambda_seq * fbseq 
+    Numerator_ind <- array(t(as.matrix(Maux_num)), c(pq1, Ny, N))
+    Num <- apply(Numerator_ind, 3, rowSums) # Don't change 3
+    
+    Maux_den <- Ulambda_seq * fbseq 
+    Denominator_ind <- array(Maux_den, c(1, Ny, N))
+    Den0 <- apply(Denominator_ind, 3, rowSums) # Don't change 3
+    Den <- rep(1- Den0, each = pq1)
+    
+    final <- Num/Den
+    t(final)
+  }
+  #stilda_aux(z, x, betaaux, thetahat, lambda)
+  
+  sbeta_asterisk <- function(y, z, x, betaaux, thetahat, lambda){
+    sbeta_aux <- sbeta(y, z, x, betaaux) + stilda_aux(z, x, betaaux, thetahat, lambda)
+    sbeta_aux
+  }
+  ##############################################################################
+  
+  # Individual s_lambda in general
+  slambda_aux <- function(z, x, betaaux, thetahat, lambda){ # lambda here !
+    N  <- nrow(x)
+    p <- ncol(x)
+    q <- ncol(z)
+    pl <- length(lambda)
+    pq1 <- p + q + 1
+    
+    yseq <- c(0, 1)
+    yseqseq <- rep(yseq, N)
+    Ny <- length(yseq)
+    
+    beta0 <- betaaux[1]
+    beta1 <- betaaux[2:(p+1)]
+    beta2 <- betaaux[(p+2):(p+q+1)]
+    
+    theta0 <- thetahat[1]
+    theta1 <- thetahat[2:(q+1)]
+    
+    logit_xz <- beta0 + as.matrix(x) %*% beta1 + as.matrix(z) %*% beta2 # (Nx1 vector)
+    mu_xz <-  as.vector(exp(logit_xz)/(1 + exp(logit_xz)))
+    museq  <- rep(mu_xz, each = Ny)
+    fbseq <- dbinom(yseqseq, 1, museq)
+    
+    logit_z <- theta0 + as.matrix(z) %*% theta1
+    mu_z <- exp(logit_z)/(1 + exp(logit_z))
+    muastseq <- rep(mu_z, each = Ny)
+    
+    XX <- as.matrix(cbind(1, x, z))
+    XXcol3e <- z[rep(seq_len(nrow(z)), each = Ny), ]
+    
+    Ucol1_seq <- as.vector(yseqseq - muastseq)
+    Ucol2_seq <-  Ucol1_seq * XXcol3e
+    Ucol1_lambda_seq <- Ucol1_seq * lambda[1]
+    Ucol2_lambda_seq <- t(t(Ucol2_seq) * lambda[-1])
+    
+    U_seq <- cbind(Ucol1_seq, Ucol2_seq)
+    Ulambda_seq <- Ucol1_lambda_seq + rowSums(Ucol2_lambda_seq)
+    
+    Maux_num <- U_seq * fbseq 
+    Numerator_ind <- array(t(as.matrix(Maux_num)), c(pl, Ny, N))
+    Num <- apply(Numerator_ind, 3, rowSums) # Don't change 3
+    
+    Maux_den <- Ulambda_seq * fbseq 
+    Denominator_ind <- array(Maux_den, c(1, Ny, N))
+    Den0 <- apply(Denominator_ind, 3, rowSums) # Don't change 3
+    Den <- rep(1- Den0, each = pl)
+    
+    final <- Num/Den
+    t(final)
+  }
+  
+  ##############################################################################
+  
+  ####################################################
+  ### Second derivative of log likelihood function ###
+  ####################################################
+  
+  Sumibbaux <- function(y, z, x, betaaux){
+    XX <- as.matrix(cbind(1, x, z))
+    beta0 <- betaaux[1]
+    beta1 <- betaaux[2:(p+1)]
+    beta2 <- betaaux[(p+2):(p+q+1)]
+    logit_xz <- beta0 + as.matrix(x) %*% beta1 + as.matrix(z) %*% beta2 # (Nx1 vector)
+    mu_xz <-  as.vector(exp(logit_xz)/(1 + exp(logit_xz))) # mu = XB
+    XX_a <- XX * mu_xz * (1 - mu_xz)
+    devdevlogfbeta <- cbind(t(XX) %*% XX_a)
+    return(devdevlogfbeta)
+  }
+  
+  ##############################################################################
+  
+  # Analytical Ingeral
+  Sumdibbaux <- function(y, z, x, betaaux, thetahat, lambda){
+    p <- ncol(x)
+    q <- ncol(z)
+    beta0 <- betaaux[1]
+    beta1 <- betaaux[2:(p+1)]
+    beta2 <- betaaux[(p+2):(p+q+1)]
+    theta0 <- thetahat[1]
+    theta1 <- thetahat[2:(q+1)]
+    
+    XX <- as.matrix(cbind(1, x, z))
+    
+    logit_xz <- beta0 + as.matrix(x) %*% beta1 + as.matrix(z) %*% beta2 # (Nx1 vector)
+    mu_xz <-  as.vector(exp(logit_xz)/(1 + exp(logit_xz)))
+    
+    logit_z <- theta0 + as.matrix(z) %*% theta1
+    mu_z <- exp(logit_z)/(1 + exp(logit_z))
+    
+    ZZ  <- as.matrix(cbind(1,  z))
+    Num_aux <- ZZ * as.vector(mu_xz * (1- mu_xz) * (mu_xz - mu_z))
+    Num <-  as.matrix(Num_aux) %*% lambda
+    
+    Den_aux <- ZZ * as.vector(mu_xz - mu_z) 
+    Den_aux2 <- as.matrix(Den_aux) %*% lambda
+    Den <- 1 - Den_aux2
+    
+    Aux <- as.vector(Num/Den)
+    final <-  t(XX * Aux)%*% XX  
+    final
+  
+  }
+  
+  ##############################################################################
+  
+  Sumdssbetaaux <- function(z, x, betaaux, thetahat, lambda){
+    N  <- nrow(x)
+    p <- ncol(x)
+    q <- ncol(z)
+    pq1 <- p + q + 1
+    
+    XX <- as.matrix(cbind(1, x, z))
+    
+    yseq <- c(0, 1)
+    yseqseq <- rep(yseq, N)
+    Ny <- length(yseq)
+    
+    beta0 <- betaaux[1]
+    beta1 <- betaaux[2:(p+1)]
+    beta2 <- betaaux[(p+2):(p+q+1)]
+    
+    theta0 <- thetahat[1]
+    theta1 <- thetahat[2:(q+1)]
+    
+    logit_xz <- beta0 + as.matrix(x) %*% beta1 + as.matrix(z) %*% beta2 # (Nx1 vector)
+    mu_xz <-  as.vector(exp(logit_xz)/(1 + exp(logit_xz)))
+    museq  <- rep(mu_xz, each = Ny)
+    fbseq <- dbinom(yseqseq, 1, museq)
+    
+    logit_z <- theta0 + as.matrix(z) %*% theta1
+    mu_z <- exp(logit_z)/(1 + exp(logit_z))
+    muastseq <- rep(mu_z, each = Ny)
+    
+    ZZ  <- as.matrix(cbind(1,  z))
+    ZZlambda <- ZZ %*% lambda
+    
+    Usbetasbeta_seq <- as.vector((yseqseq - muastseq) * (yseqseq - museq)  * (yseqseq - museq) )
+    Uconst_seq <- as.vector(yseqseq - muastseq)
+    
+    y_int_num <- Usbetasbeta_seq * fbseq 
+    y_int_ind_num <- array(t(as.matrix(y_int_num)), c(1, Ny, N))
+    yaux_num <- apply(y_int_ind_num, 3, rowSums)
+    
+    y_int_den <- Uconst_seq * fbseq 
+    y_int_ind_den <- array(t(as.matrix(y_int_den)), c(1, Ny, N))
+    yaux_den <- apply(y_int_ind_den, 3, rowSums)
+    
+    Aux <- as.vector(ZZlambda * yaux_num / (1- ZZlambda * yaux_den))
+    final <-  t(XX * Aux)%*% XX
+    final
+  }
+  ##############################################################################
+  
+  Sumsstildaaux <- function(z, x, betaaux, thetahat, lambda){
+    N  <- nrow(x)
+    p <- ncol(x)
+    q <- ncol(z)
+    pq1 <- p + q + 1
+    
+    XX <- as.matrix(cbind(1, x, z))
+    
+    yseq <- c(0, 1)
+    yseqseq <- rep(yseq, N)
+    Ny <- length(yseq)
+    
+    beta0 <- betaaux[1]
+    beta1 <- betaaux[2:(p+1)]
+    beta2 <- betaaux[(p+2):(p+q+1)]
+    
+    theta0 <- thetahat[1]
+    theta1 <- thetahat[2:(q+1)]
+    
+    logit_xz <- beta0 + as.matrix(x) %*% beta1 + as.matrix(z) %*% beta2 # (Nx1 vector)
+    mu_xz <-  as.vector(exp(logit_xz)/(1 + exp(logit_xz)))
+    museq  <- rep(mu_xz, each = Ny)
+    fbseq <- dbinom(yseqseq, 1, museq)
+    
+    logit_z <- theta0 + as.matrix(z) %*% theta1
+    mu_z <- exp(logit_z)/(1 + exp(logit_z))
+    muastseq <- rep(mu_z, each = Ny)
+    
+    ZZ  <-  as.matrix(cbind(1,  z))
+    ZZlambda <- ZZ %*% lambda
+    
+    Usbeta_seq <- as.vector((yseqseq - muastseq) * (yseqseq - museq) )
+    Uconst_seq <- as.vector(yseqseq - muastseq)
+    
+    y_int_num <- Usbeta_seq * fbseq 
+    y_int_ind_num <- array(t(as.matrix(y_int_num)), c(1, Ny, N))
+    yaux_num <- apply(y_int_ind_num, 3, rowSums)
+    
+    y_int_den <- Uconst_seq * fbseq 
+    y_int_ind_den <- array(t(as.matrix(y_int_den)), c(1, Ny, N))
+    yaux_den <- apply(y_int_ind_den, 3, rowSums)
+    
+    Aux0 <- ZZlambda * yaux_num / (1- ZZlambda * yaux_den) 
+    Aux <- as.vector(Aux0 * Aux0)
+    final <-  t(XX * Aux)%*% XX
+    final
+  }
+  ##############################################################################
+  
+  SumBetaLambdaaux <- function(z, x, betaaux, thetahat, lambda){
+    N  <- nrow(x)
+    p <- ncol(x)
+    q <- ncol(z)
+    pq1 <- p + q + 1
+    
+    XX <- as.matrix(cbind(1, x, z))
+    
+    yseq <- c(0, 1)
+    yseqseq <- rep(yseq, N)
+    Ny <- length(yseq)
+    
+    beta0 <- betaaux[1]
+    beta1 <- betaaux[2:(p+1)]
+    beta2 <- betaaux[(p+2):(p+q+1)]
+    
+    theta0 <- thetahat[1]
+    theta1 <- thetahat[2:(q+1)]
+    
+    logit_xz <- beta0 + as.matrix(x) %*% beta1 + as.matrix(z) %*% beta2 # (Nx1 vector)
+    mu_xz <-  as.vector(exp(logit_xz)/(1 + exp(logit_xz)))
+    museq  <- rep(mu_xz, each = Ny)
+    fbseq <- dbinom(yseqseq, 1, museq)
+    
+    logit_z <- theta0 + as.matrix(z) %*% theta1
+    mu_z <- exp(logit_z)/(1 + exp(logit_z))
+    muastseq <- rep(mu_z, each = Ny)
+    
+    ZZ  <- as.matrix(cbind(1,  z))
+    ZZlambda <- ZZ %*% lambda
+    
+    Usbeta_seq <- as.vector((yseqseq - muastseq)  * (yseqseq - museq) )
+    Uconst_seq <- as.vector(yseqseq - muastseq)
+    
+    y_int_num <- Usbeta_seq * fbseq 
+    y_int_ind_num <- array(t(as.matrix(y_int_num)), c(1, Ny, N))
+    yaux_num <- apply(y_int_ind_num, 3, rowSums)
+    
+    y_int_den <- Uconst_seq * fbseq 
+    y_int_ind_den <- array(t(as.matrix(y_int_den)), c(1, Ny, N))
+    yaux_den <- apply(y_int_ind_den, 3, rowSums)
+    
+    Aux <- as.vector( yaux_num / ( (1- ZZlambda * yaux_den) * (1- ZZlambda * yaux_den) ) )
+    final <-  t(XX ) %*% (ZZ* Aux)
+    final
+  }
+  ##############################################################################
+  
+  Sumsslambdaaux <- function(z, x, betaaux, thetahat, lambda){
+    N  <- nrow(x)
+    p <- ncol(x)
+    q <- ncol(z)
+    pq1 <- p + q + 1
+    
+    XX <- as.matrix(cbind(1, x, z))
+    
+    yseq <- c(0, 1)
+    yseqseq <- rep(yseq, N)
+    Ny <- length(yseq)
+    
+    beta0 <- betaaux[1]
+    beta1 <- betaaux[2:(p+1)]
+    beta2 <- betaaux[(p+2):(p+q+1)]
+    
+    theta0 <- thetahat[1]
+    theta1 <- thetahat[2:(q+1)]
+    
+    logit_xz <- beta0 + as.matrix(x) %*% beta1 + as.matrix(z) %*% beta2 # (Nx1 vector)
+    mu_xz <-  as.vector(exp(logit_xz)/(1 + exp(logit_xz)))
+    museq  <- rep(mu_xz, each = Ny)
+    fbseq <- dbinom(yseqseq, 1, museq)
+    
+    logit_z <- theta0 + as.matrix(z) %*% theta1
+    mu_z <- exp(logit_z)/(1 + exp(logit_z))
+    muastseq <- rep(mu_z, each = Ny)
+    
+    ZZ  <- as.matrix(cbind(1,  z))
+    ZZlambda <- ZZ %*% lambda
+    
+    Uconst_seq <- as.vector(yseqseq - muastseq)
+    
+    y_int <- Uconst_seq * fbseq 
+    y_int_ind <- array(t(as.matrix(y_int)), c(1, Ny, N))
+    yaux <- apply(y_int_ind, 3, rowSums)
+    
+    Aux <- as.vector( yaux /  (1- ZZlambda * yaux) *  yaux /  (1- ZZlambda * yaux) )
+    final <-  t(ZZ ) %*% (ZZ* Aux)
+    final    
+  }
+  ##############################################################################
+  
+  ########################################################################
+  ### First and Second of log likelihood function - make as a function ###
+  ########################################################################
+  
+  devlogeta <- function(y, z, x, betaaux, thetahat, lambda){
+    sbeta_sum <- colSums(sbeta(y, z, x, betaaux))
+    stilda_sum <- stilda_sum_aux(z, x, betaaux, thetahat, lambda)                  
+    
+    parBeta <- sbeta_sum + stilda_sum
+    parLambda <- slambda_sum_aux(z, x, betaaux, thetahat, lambda)
+    
+    devfinal <- c(parBeta, parLambda)
+    return(devfinal)
+  }
+  
+  ##############################################################################
+  
+  devdevlogeta <- function(y, z, x, betaaux, thetahat, lambda){
+    Sumibb <- Sumibbaux(y, z, x, betaaux)
+    Sumdibb <- Sumdibbaux(y, z, x, betaaux, thetahat, lambda)
+    Sumdssbeta <- Sumdssbetaaux(z, x, betaaux, thetahat, lambda)
+    Sumsstilda <- Sumsstildaaux(z, x, betaaux, thetahat, lambda)
+    
+    parBetaparBeta <- - Sumibb - Sumdibb + Sumdssbeta + Sumsstilda
+    
+    parBetaparLambda <- SumBetaLambdaaux(z, x, betaaux, thetahat, lambda)
+    parLambdaparBeta <- t(parBetaparLambda)
+    
+    parLambdaparLambda <- Sumsslambdaaux(z, x, betaaux, thetahat, lambda)
+    
+    devdevfinal <- rbind(cbind(parBetaparBeta, parBetaparLambda), cbind(parLambdaparBeta, parLambdaparLambda))
+    return(devdevfinal)
+  }
+  
+  ##############################################################################
+  
+
+  #############################
+  ### Newton Raphson method ###
+  #############################
+  
+  J2aux <- function(idK, sast_ind, x,z){ # covariance matrix of sast_ind 
+    p <- ncol(x)
+    q <- ncol(z)
+    pq1 <- p + q + 1
+    pl <-  q + 1
+    aK <-0
+    for (K in unique(idK)){
+      idKaux <-  idK == K
+      sumK  <-  colSums( matrix(sast_ind[idKaux ,], sum(idK==K), pq1+pl, byrow=F) ) 
+      aK    <- aK +  sumK %*% t( sumK )
+    }
+    aK
+  }
+  
+
+  ################
+   
+  NewtonRaphson <- function( y, z, x, betaaux, thetahat, lambda, eta0=c(glm(y~x+z, family=binomial)$coef, lambda), idK){
+    p <- ncol(x)
+    q <- ncol(z)
+    pq1 <- p + q + 1
+    pl <- length(lambda)
+    
+    theta0 <- thetahat[1] 
+    theta1 <- thetahat[2:(q+1)]
+    
+    eps  <- 1
+    etan_1   <- eta0
+    
+    i=1
+    while (eps >  0.00001) {
+      betan_1  <- etan_1[1:pq1] 
+      lambdan_1 <- etan_1[(pq1+1):(pq1+pl)]
+
+      devfn_1 <- devlogeta( y, z, x, betan_1, thetahat, lambdan_1)
+      devdevfn_1 <- devdevlogeta( y, z, x, betan_1, thetahat, lambdan_1)
+      
+      etan <- etan_1 - as.vector(solve(devdevfn_1) %*% devfn_1)
+      eps <- max(abs(etan - etan_1))
+      
+      etan_1 <- etan
+      i=i+1
+      print(c(i, eps))
+    }
+    
+    beta_0 <- etan_1[1:pq1]
+    lambda_0 <- etan_1[(pq1+1):(pq1+pl)]
+    
+    I <- -devdevlogeta(y, z, x, beta_0, thetahat, lambda*0)
+    
+    I2 <- -devdevlogeta(y, z, x, beta_0, thetahat, lambda_0)
+    
+    # Charterjee variance matrix
+    JCharVar  <-  I
+    JCharVar[1:pq1, (pq1+1):(pq1+pl)] <- 0
+    JCharVar[(pq1+1):(pq1+pl), 1:pq1] <- 0
+    JCharVar[(pq1+1):(pq1+pl), (pq1+1):(pq1+pl)] <- -JCharVar[(pq1+1):(pq1+pl), (pq1+1):(pq1+pl)]
+     
+    Var  <-  solve(I) %*% JCharVar %*% solve(I)
+    Var2 <-  solve(I2) %*% JCharVar %*% solve(I2)
+    
+    # Calculate individual variance by cluster
+    sbeta_ind   <- sbeta_asterisk(y, z, x, beta_0, thetahat, lambda_0)
+    slambda_ind <- slambda_aux(z, x, beta_0, thetahat, lambda_0)
+    sast_ind    <- cbind(sbeta_ind, slambda_ind)
+    
+    J2 <- J2aux(idK, sast_ind,x,z)
+    
+    VarK  <-  solve(I) %*% J2 %*% solve(I)
+    VarK2 <-  solve(I2) %*% J2 %*% solve(I2)
+    
+    return(list(eta0 = eta0, etan_1= etan_1, Var = Var, Var2 = Var2,VarK = VarK, VarK2 = VarK2,I = I, I2 = I2, JChar = JCharVar,  J2 = J2))
+  }
+  
+ 
+  
