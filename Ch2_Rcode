@@ -1,5 +1,3 @@
-  rm(list=ls())
-  gc()
   ##############################
   ### Simulation : Functions ###
   ##############################
@@ -23,8 +21,7 @@
     mu_xz <-  as.vector(exp(logit_xz)/(1 + exp(logit_xz))) # mu = XB
     devlogfbeta <- (y - mu_xz)*XX
     return(devlogfbeta)
-  }
-  
+  }  
 
   ##############################################################################
   
@@ -81,6 +78,7 @@
     final_sum <- rowSums(Num/Den)
     final_sum
   }
+  
   ##############################################################################
   
   slambda_sum_aux <- function(z, x, betaaux, thetahat, lambda){
@@ -191,12 +189,12 @@
     final <- Num/Den
     t(final)
   }
-  #stilda_aux(z, x, betaaux, thetahat, lambda)
   
   sbeta_asterisk <- function(y, z, x, betaaux, thetahat, lambda){
     sbeta_aux <- sbeta(y, z, x, betaaux) + stilda_aux(z, x, betaaux, thetahat, lambda)
     sbeta_aux
   }
+  
   ##############################################################################
   
   # Individual s_lambda in general
@@ -300,7 +298,6 @@
     Aux <- as.vector(Num/Den)
     final <-  t(XX * Aux)%*% XX  
     final
-  
   }
   
   ##############################################################################
@@ -351,6 +348,7 @@
     final <-  t(XX * Aux)%*% XX
     final
   }
+  
   ##############################################################################
   
   Sumsstildaaux <- function(z, x, betaaux, thetahat, lambda){
@@ -400,6 +398,7 @@
     final <-  t(XX * Aux)%*% XX
     final
   }
+  
   ##############################################################################
   
   SumBetaLambdaaux <- function(z, x, betaaux, thetahat, lambda){
@@ -448,6 +447,7 @@
     final <-  t(XX ) %*% (ZZ* Aux)
     final
   }
+  
   ##############################################################################
   
   Sumsslambdaaux <- function(z, x, betaaux, thetahat, lambda){
@@ -491,6 +491,7 @@
     final <-  t(ZZ ) %*% (ZZ* Aux)
     final    
   }
+  
   ##############################################################################
   
   ########################################################################
