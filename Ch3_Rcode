@@ -1,0 +1,360 @@
+### Functions ###
+fbeta <- function(ys, xs, zs, betaaux){  
+  p <- ncol(xs)
+  q <- ncol(zs)
+  
+  beta0 <- betaaux[1]
+  beta1 <- betaaux[2:(p+1)]
+  beta2 <- betaaux[(p+2):(p+q+1)]
+  
+  logit_samp <- beta0 + as.matrix(xs) %*% beta1 + as.matrix(zs) %*% beta2
+  mu_samp <- exp(logit_samp)/(1 + exp(logit_samp))
+  
+  fbeta <- (mu_samp^ys) * ((1 - mu_samp)^(1-ys))
+  fbeta 
+}
+
+U <- function(ys, zs, thetahat){
+  q <- ncol(zs)
+  zzs <- cbind(1, zs)
+  theta0 <- thetahat[1]
+  theta1 <- thetahat[2:(q+1)]
+  
+  logit_z <- theta0 + as.matrix(zs) %*% theta1 
+  muast_z <- exp(logit_z)/(1 + exp(logit_z)) 
+  
+  ((1 - muast_z) * zzs)*ys + ((- muast_z) * zzs)*(1-ys)  
+}
+
+ubetaalpha <- function(ys, xs, zs,  betaaux,  thetahat ){  
+  Uaux0  <- U(ys*0,zs, thetahat)
+  Uaux1  <- U(ys*0+1,zs, thetahat)
+  p1a     <- fbeta(ys*0+1, xs, zs, betaaux)
+  p0a     <- fbeta(ys*0 , xs, zs, betaaux)
+  
+  Uaux0*p0a + Uaux1*p1a   
+}
+
+loglikefunCCbeta <- function(gamma0, listA){
+  p         <- ncol(xs)
+  q         <- ncol(zs)
+  ys        <- listA$ys
+  xs        <- listA$xs
+  zs        <- listA$zs
+  thetahat  <- listA$thetahat
+  ncase     <- listA$ncase 
+  ncon      <- listA$ncon
+  Ncase     <- listA$Ncase 
+  Ncon      <- listA$Ncon
+  N         <- Ncase + Ncon 
+  
+  betaaux   <- gamma0[1:(p+q+1)]
+  lambda    <- listA$lambda 
+  
+  p1  <-  Ncase/N
+  p0  <-  Ncon/N
+  mu1 <-  ncase/ p1 
+  mu0 <-  ncon/ p0 
+  
+  ubetaalphaaux <- ubetaalpha(ys, xs, zs,  betaaux,  thetahat ) 
+  
+  fbeta0     <- fbeta(ys*0, xs, zs, betaaux) 
+  fbeta1     <- fbeta(ys*0+1, xs, zs, betaaux) 
+  
+  aux <- (fbeta0*mu0 + fbeta1*mu1) - as.matrix(ubetaalphaaux)%*%lambda 
+  
+  logaux <- fbeta(  ys , xs, zs, betaaux) / aux
+  indexaux <- logaux>=0
+  CondS <- logaux[indexaux]
+  
+  aux2 <- -(sum(log(CondS)))   
+  aux2
+}
+
+ListfunCCbeta <- function(gamma0, listA){
+  p         <- ncol(xs)
+  q         <- ncol(zs)
+  ys        <- listA$ys
+  xs        <- listA$xs
+  zs        <- listA$zs
+  thetahat  <- listA$thetahat
+  ncase     <- listA$ncase 
+  ncon      <- listA$ncon
+  Ncase     <- listA$Ncase 
+  Ncon      <- listA$Ncon
+  N         <- Ncase + Ncon 
+  
+  betaaux   <- gamma0[1:(p+q+1)]  
+  lambda    <- listA$lambda  
+  
+  p1  <-  Ncase/N
+  p0  <-  Ncon/N
+  mu1 <-  ncase/ p1 
+  mu0 <-  ncon/ p0 
+  
+  ubetaalphaaux <- ubetaalpha(ys, xs, zs,  betaaux,  thetahat ) 
+  
+  fbeta0     <- fbeta(ys*0, xs, zs, betaaux) 
+  fbeta1     <- fbeta(ys*0+1, xs, zs, betaaux) 
+  
+  aux <- (fbeta0*mu0 + fbeta1*mu1)    - as.matrix(ubetaalphaaux)%*%lambda 
+  
+  logaux <- fbeta(  ys , xs, zs, betaaux) / aux
+  indexaux <- logaux>=0
+  
+  ys <- ys[indexaux]
+  xs <- xs[indexaux,]
+  zs <- zs[indexaux,]
+  
+  listfunCCbeta  <- list(ys=ys, xs=xs, zs=zs , thetahat=thetahat, ncase=ncase, ncon=ncon,  Ncase=Ncase, Ncon=Ncon, lambda=lambda)
+  listfunCCbeta  
+}
+
+loglikefunCClambda <- function(gamma0, listA){  
+  q         <- ncol(zs)
+  ys        <- listA$ys
+  xs        <- listA$xs
+  zs        <- listA$zs
+  thetahat  <- listA$thetahat
+  ncase     <- listA$ncase 
+  ncon      <- listA$ncon
+  Ncase     <- listA$Ncase 
+  Ncon      <- listA$Ncon
+  N         <- Ncase+ Ncon 
+  
+  betaaux   <- listA$betaaux  
+  lambda    <- gamma0[1:(q+1)]   
+  
+  p1  <-  Ncase/N
+  p0  <-  Ncon/N
+  mu1 <-  ncase/ p1 
+  mu0 <-  ncon/ p0 
+  
+  ubetaalphaaux <- ubetaalpha(ys, xs, zs,  betaaux,  thetahat ) 
+  
+  fbeta0     <- fbeta(ys*0, xs, zs, betaaux) 
+  fbeta1     <- fbeta(ys*0+1, xs, zs, betaaux) 
+  
+  aux <- (fbeta0*mu0 + fbeta1*mu1)  - as.matrix(ubetaalphaaux)%*%lambda
+  
+  logaux <- fbeta(  ys , xs, zs, betaaux) / aux
+  CondS <- as.matrix(logaux[logaux>=0])
+  length(CondS)
+    
+  aux2 <- -(sum(log(CondS)))   
+  aux2
+}
+
+
+# function for gradient
+loglikefunCC_Ind <- function(gamma0, listA){
+  p         <- ncol(xs)
+  q         <- ncol(zs)
+  ys        <- listA$ys
+  xs        <- listA$xs
+  zs        <- listA$zs
+  thetahat  <- listA$thetahat
+  ncase     <- listA$ncase 
+  ncon      <- listA$ncon
+  Ncase     <- listA$Ncase 
+  Ncon      <- listA$Ncon
+  N         <- Ncase+ Ncon 
+  
+  betaaux   <- gamma0[1:(p+q+1)]  
+  lambda    <- gamma0[(p+q+2): (p+q+2 +q )] 
+  
+  p1  <-  Ncase/N
+  p0  <-  Ncon/N
+  mu1 <-  ncase/ p1 
+  mu0 <-  ncon/ p0 
+  
+  ubetaalphaaux <- ubetaalpha(ys, xs, zs,  betaaux,  thetahat ) 
+  
+  fbeta0     <- fbeta(ys*0, xs, zs, betaaux) 
+  fbeta1     <- fbeta(ys*0+1, xs, zs, betaaux) 
+    
+  aux <- (fbeta0*mu0 + fbeta1*mu1)     - as.matrix(ubetaalphaaux)%*%lambda
+    
+  logaux <- fbeta(  ys , xs, zs, betaaux) / aux
+  CondS <- as.matrix(logaux[logaux>0])
+  length(CondS)
+    
+  aux2 <- log(CondS)  
+  aux2
+}
+
+J2aux <- function(idK, score, xs,zs){ # covariance matrix of sast_ind 
+  p <- ncol(xs)
+  q <- ncol(zs)
+  pq1 <- p + q + 1
+  pl <-  q + 1  
+  aK <-0
+  for (K in unique(idK)){
+    idKaux <-  idK == K
+    sumK  <-  colSums( matrix(score[idKaux ,], sum(idK==K), pq1+pl, byrow=F) ) 
+    aK    <- aK +  sumK %*% t( sumK )
+  }
+  aK
+}
+
+glambda <- function(gamma0, listA){  
+  q         <- ncol(zs)
+  ys        <- listA$ys
+  xs        <- listA$xs
+  zs        <- listA$zs
+  thetahat  <- listA$thetahat
+  ncase     <- listA$ncase 
+  ncon      <- listA$ncon
+  Ncase     <- listA$Ncase 
+  Ncon      <- listA$Ncon
+  N         <- Ncase+ Ncon
+  
+  betaaux   <- listA$betaaux  
+  lambda    <- gamma0[1:(q+1)] 
+  
+  p1  <-  Ncase/N
+  p0  <-  Ncon/N
+  mu1 <-  ncase/ p1 
+  mu0 <-  ncon/ p0 
+  
+  ubetaalphaaux <- ubetaalpha(ys, xs, zs,  betaaux,  thetahat ) 
+  
+  fbeta0     <- fbeta(ys*0, xs, zs, betaaux) 
+  fbeta1     <- fbeta(ys*0+1, xs, zs, betaaux) 
+  
+  aux <- (fbeta0*mu0 + fbeta1*mu1)/N   - as.matrix(ubetaalphaaux)%*%lambda
+  
+  aux2 <-    colSums( ubetaalphaaux/ aux )
+  aux2  
+}
+
+g2lambda <- function(gamma0, listA){
+  q         <- ncol(zs)
+  ys        <- listA$ys
+  xs        <- listA$xs
+  zs        <- listA$zs
+  thetahat  <- listA$thetahat
+  ncase     <- listA$ncase 
+  ncon      <- listA$ncon
+  Ncase     <- listA$Ncase 
+  Ncon      <- listA$Ncon
+  N         <- Ncase+ Ncon
+  
+  betaaux   <- listA$betaaux  
+  lambda    <- gamma0[1:(q+1)] 
+  
+  p1  <-  Ncase/N
+  p0  <-  Ncon/N
+  mu1 <-  ncase/ p1 
+  mu0 <-  ncon/ p0 
+  
+  ubetaalphaaux <- as.matrix(ubetaalpha(ys, xs, zs,  betaaux,  thetahat )) 
+  
+  fbeta0     <- fbeta(ys*0, xs, zs, betaaux) 
+  fbeta1     <- fbeta(ys*0+1, xs, zs, betaaux) 
+  
+  aux <- as.vector((fbeta0*mu0 + fbeta1*mu1) /N    - as.matrix(ubetaalphaaux)%*%lambda)
+  
+  aux0 <-  as.matrix( (ubetaalphaaux/(aux)^2 )  )
+  aux2 <-  as.matrix( t(aux0) %*%  (ubetaalphaaux) )
+  aux2  
+}
+
+NRlambda <-  function(gamma0, listA){  
+  maxit    <- listA$maxit  
+  q         <- ncol(zs)
+  ys        <- listA$ys
+  xs        <- listA$xs
+  zs        <- listA$zs
+  thetahat  <- listA$thetahat
+  ncase     <- listA$ncase 
+  ncon      <- listA$ncon
+  Ncase     <- listA$Ncase 
+  Ncon      <- listA$Ncon
+  N         <- Ncase+ Ncon
+  
+  betaaux   <- listA$betaaux  
+  lambda    <- gamma0[1:(q+1)]
+  
+  eps  <- 1
+  lambdaold <- c(rep(0.01, q + 1))
+  l=1  
+  
+  listBeta =list(ys=ys, xs=xs, zs=zs , thetahat=thetahat, ncase=ncase, ncon=ncon,  Ncase=Ncase, Ncon=Ncon, betaaux= betaaux )
+  
+  while (eps >  0.0001) {
+    lambda    <- lambdaold    
+    solveg2lambdaaux   <- solve(  g2lambda(lambda, listBeta)  ) 
+    glambdaaux         <- glambda(lambda, listBeta)         
+    lambdanew <-  lambdaold  - as.vector( solveg2lambdaaux %*% glambdaaux )    
+    eps <- max(abs(lambdanew - lambdaold))    
+    lambdaold  <- lambdanew 
+    if(l==maxit){stop("Error")}        
+    l=l+1
+  }
+  lambdaold
+}
+
+stagemax <-  function(gamma0, listA){  
+  p         <- ncol(xs)
+  q         <- ncol(zs)
+  ys        <- listA$ys
+  xs        <- listA$xs
+  zs        <- listA$zs
+  thetahat  <- listA$thetahat
+  ncase     <- listA$ncase 
+  ncon      <- listA$ncon
+  Ncase     <- listA$Ncase 
+  Ncon      <- listA$Ncon
+  N         <- Ncase+ Ncon
+  
+  beta0     <- gamma0[1]
+  beta1     <- gamma0[2:(p+1)]
+  beta2     <- gamma0[(p+2):(p+q+1)] 
+  betaaux   <- c(beta0, beta1, beta2)  
+  lambda    <- gamma0[(p+q+2): (p+q+2 +q )] 
+  
+  beta_1  <-  betaaux
+  lambda1  <- lambda 
+  
+  CountErrorNR <- 0
+  abs0 <-1
+  ii <- 1
+  maxitt <- 50
+  while(abs0 >=0.001){
+    listA1  <- list(ys=ys, xs=xs, zs=zs , thetahat=thetahat, ncase=ncase, ncon=ncon,  Ncase=Ncase, Ncon=Ncon, lambda=lambda1)
+    ListBetaaux <- ListfunCCbeta(beta_1, listA1)
+    
+    est1    <- optim(beta_1, loglikefunCCbeta, listA= ListBetaaux,  hessian=TRUE  , method= 'BFGS')     
+    listA2  <- list(ys=ys, xs=xs, zs=zs , thetahat=thetahat, ncase=ncase, ncon=ncon,  Ncase=Ncase, Ncon=Ncon, betaaux= est1$par, maxit=50)    
+    est2aux <- tryCatch(NRlambda(lambda1, listA2), error=function(e)'e')
+        
+    if(est2aux[1] =='e'){
+      CountErrorNR <- CountErrorNR +1
+      new=NULL 
+      new1 = NULL
+      betahessian=NULL      
+      break('e')      
+    }
+    
+    if(est2aux[1] !='e'){
+      est2 <- est2aux
+      listA1  <- list(ys=ys, xs=xs, zs=zs , thetahat=thetahat, ncase=ncase, ncon=ncon,  Ncase=Ncase, Ncon=Ncon, lambda=est2)
+     
+      old     <- c(beta_1)
+      new     <- c(est1$par)
+      
+      beta_1  <- est1$par
+      lambda1 <- est2
+      abs0    <- max(abs(old-new))
+      
+      new1 <- c(est1$par, est2)
+      print(c(ii, abs0, new))
+      
+      ii = ii+1            
+    }    
+    if(ii==maxitt){stop("Error")}    
+  }
+  smres <- list(new=new, new1 = new1, betahessian=est1$hessian, CountErrorNR=CountErrorNR)
+  smres  
+}
