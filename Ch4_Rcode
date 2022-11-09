@@ -1,0 +1,496 @@
+library(tidyverse)
+library(dplyr)
+library(survey)
+library(rootSolve) 
+library(numDeriv)
+
+glambda <- function(gamma0, listA){
+  ys            <- listA$ys
+  xs            <- listA$xs
+  zs            <- listA$zs
+  p             <- ncol(xs)
+  q             <- ncol(zs)
+  idKs          <- listA$idKs
+  N             <- listA$N
+  n             <- listA$n
+  DataSample    <- listA$DataSample
+  Nkalls        <- DataSample$Nkalls
+  DataAg        <- listA$DataAg
+  fittedCountsA <- listA$fittedCountsA
+  betaaux       <- listA$betaaux 
+  beta0         <- betaaux[1]
+  beta1         <- betaaux[2:(p+1)]
+  beta2         <- betaaux[(p+2):(p+q+1)] 
+  
+  lambda        <- gamma0[1:(q+1)]
+  
+  nkaux         <- DataSample %>%  group_by(idKs)%>% summarise(count=n())
+  nk            <- nkaux  %>% pull(count)  
+  names(nk)     <- nkaux$idKs
+  nkall         <- nk[as.character(DataSample$idKs)]
+  
+  zA            <- cbind(DataAg$zc1A, DataAg$zc2A, DataAg$zc3A)
+  zzA           <- cbind(DataAg$zc0A, DataAg$zc1A, DataAg$zc2A, DataAg$zc3A)
+  rownames(zzA) <- DataAg$idK
+  zzA_samp      <- zzA[as.character(DataSample$idKs), ]
+  
+  logit_samp    <- beta0 + as.matrix(xs) %*% beta1 + as.matrix(zs) %*% beta2
+  mu_samp       <- exp(logit_samp)/(1 + exp(logit_samp))
+  
+  muast_zA      <- fittedCountsA 
+  muastA_samp   <- muast_zA[as.character(DataSample$idKs)]
+  
+  KKK           <- 1
+  aux_num       <- (zzA_samp  * as.vector( Nkalls * (mu_samp  - (muastA_samp / Nkalls))))/KKK
+  aux_denom     <- nkall - ((zzA_samp %*% lambda/KKK)  * Nkalls * (mu_samp  - muastA_samp/Nkalls ))
+  
+  aux           <- colSums( aux_num/as.vector(aux_denom))
+  aux/n
+}
+
+g2lambda <- function(gamma0, listA){
+  ys            <- listA$ys
+  xs            <- listA$xs
+  zs            <- listA$zs
+  p             <- ncol(xs)
+  q             <- ncol(zs)
+  idKs          <- listA$idKs
+  N             <- listA$N
+  n             <- listA$n
+  DataSample    <- listA$DataSample
+  Nkalls        <- DataSample$Nkalls
+  DataAg        <- listA$DataAg
+  fittedCountsA <- listA$fittedCountsA
+  betaaux       <- listA$betaaux 
+  beta0         <- betaaux[1]
+  beta1         <- betaaux[2:(p+1)]
+  beta2         <- betaaux[(p+2):(p+q+1)] 
+  
+  lambda        <- gamma0[1:(q+1)]
+
+  nkaux         <- DataSample %>%  group_by(idKs)%>% summarise(count=n())
+  nk            <- nkaux  %>% pull(count)  
+  names(nk)     <- nkaux$idKs
+  nkall         <- nk[as.character(DataSample$idKs)]
+  
+  zA            <- cbind(DataAg$zc1A, DataAg$zc2A, DataAg$zc3A)
+  zzA           <- cbind(DataAg$zc0A, DataAg$zc1A, DataAg$zc2A, DataAg$zc3A)
+  rownames(zzA) <- DataAg$idK
+  zzA_samp      <- zzA[as.character(DataSample$idKs), ]
+  
+  logit_samp    <- beta0 + as.matrix(xs) %*% beta1 + as.matrix(zs) %*% beta2
+  mu_samp       <- exp(logit_samp)/(1 + exp(logit_samp))
+  
+  muast_zA      <- fittedCountsA 
+  muastA_samp   <- muast_zA[as.character(DataSample$idKs)]
+  
+  KKK           <- 1
+  aux_num       <- (zzA_samp  * as.vector( Nkalls * (mu_samp  - (muastA_samp / Nkalls))))/KKK
+  aux_denom     <- nkall - ((zzA_samp %*% lambda/KKK)  * Nkalls * (mu_samp  - muastA_samp/Nkalls ))
+  
+  aux0          <- aux_num / as.vector(aux_denom)
+  aux           <- as.matrix( t(aux0) %*% (aux0))
+  aux/n
+}
+
+gbeta <- function(gamma0, listA){
+  ys            <- listA$ys
+  xs            <- listA$xs
+  zs            <- listA$zs
+  p             <- ncol(xs)
+  q             <- ncol(zs)
+  idKs          <- listA$idKs
+  N             <- listA$N
+  n             <- listA$n
+  DataSample    <- listA$DataSample
+  Nkalls        <- DataSample$Nkalls
+  DataAg        <- listA$DataAg
+  fittedCountsA <- listA$fittedCountsA
+  lambda        <- listA$lambda 
+  
+  betaaux       <- gamma0[1:(p+q+1)]
+  beta0         <- betaaux[1]
+  beta1         <- betaaux[2:(p+1)]
+  beta2         <- betaaux[(p+2):(p+q+1)] 
+  
+  nkaux         <- DataSample %>%  group_by(idKs)%>% summarise(count=n())
+  nk            <- nkaux  %>% pull(count)  
+  names(nk)     <- nkaux$idKs
+  nkall         <- nk[as.character(DataSample$idKs)]
+  
+  zA            <- cbind(DataAg$zc1A, DataAg$zc2A, DataAg$zc3A)
+  zzA           <- cbind(DataAg$zc0A, DataAg$zc1A, DataAg$zc2A, DataAg$zc3A)
+  rownames(zzA) <- DataAg$idK
+  zzA_samp      <- zzA[as.character(DataSample$idKs), ]
+  
+  logit_samp    <- beta0 + as.matrix(xs) %*% beta1 + as.matrix(zs) %*% beta2
+  mu_samp       <- exp(logit_samp)/(1 + exp(logit_samp))
+  
+  muast_zA      <- fittedCountsA 
+  muastA_samp   <- muast_zA[as.character(DataSample$idKs)]  
+  
+  XX            <- cbind(1, xs, zs)
+  
+  devlogfbeta   <- as.matrix(XX) *   as.vector(ys - mu_samp) 
+  devlogfbeta2  <- as.matrix(XX) *   as.vector(1 - mu_samp)*as.vector( mu_samp) 
+  
+  Aaux          <- (zzA_samp %*% lambda)  * Nkalls
+  Baux          <-   (  Aaux /Nkalls)  * muastA_samp
+
+  devlogDenom   <- as.vector(Aaux / (nkall - ( Aaux*( mu_samp-  muastA_samp/Nkalls) ))) * devlogfbeta2
+
+  final         <- colSums(devlogfbeta + devlogDenom)
+  final /n
+}
+
+g2beta <- function(gamma0, listA){
+  ys            <- listA$ys
+  xs            <- listA$xs
+  zs            <- listA$zs
+  p             <- ncol(xs)
+  q             <- ncol(zs)
+  idKs          <- listA$idKs
+  N             <- listA$N
+  n             <- listA$n
+  DataSample    <- listA$DataSample
+  Nkalls        <- DataSample$Nkalls
+  DataAg        <- listA$DataAg
+  fittedCountsA <- listA$fittedCountsA
+  lambda        <- listA$lambda 
+  
+  betaaux       <- gamma0[1:(p+q+1)]
+  beta0         <- betaaux[1]
+  beta1         <- betaaux[2:(p+1)]
+  beta2         <- betaaux[(p+2):(p+q+1)] 
+  
+  nkaux         <- DataSample %>%  group_by(idKs)%>% summarise(count=n())
+  nk            <- nkaux  %>% pull(count)  
+  names(nk)     <- nkaux$idKs
+  nkall         <- nk[as.character(DataSample$idKs)]
+  
+  zA            <- cbind(DataAg$zc1A, DataAg$zc2A, DataAg$zc3A)
+  zzA           <- cbind(DataAg$zc0A, DataAg$zc1A, DataAg$zc2A, DataAg$zc3A)
+  rownames(zzA) <- DataAg$idK
+  zzA_samp      <- zzA[as.character(DataSample$idKs), ]
+  
+  logit_samp    <- beta0 + as.matrix(xs) %*% beta1 + as.matrix(zs) %*% beta2
+  mu_samp       <- exp(logit_samp)/(1 + exp(logit_samp))
+  
+  muast_zA      <- fittedCountsA 
+  muastA_samp   <- muast_zA[as.character(DataSample$idKs)] 
+  
+  XX            <- cbind(1, xs, zs)
+  
+  Aaux          <- (zzA_samp %*% lambda)  * Nkalls
+  Baux          <- nkall + (zzA_samp %*% lambda)  * muastA_samp
+  devmudevbeta  <- XX * as.vector(mu_samp * ( 1 - mu_samp ))
+  
+  nom           <- (Aaux * Baux) -  (Baux)^2
+  denom         <- (Baux - (Aaux * mu_samp))^{2}
+  
+  aux           <-  nom / denom
+  
+  aux2          <- t(as.vector(aux) *XX) %*% devmudevbeta
+  aux2 /n
+}
+
+
+
+gbetalambda <- function(gamma0, listA){
+  betaaux              <- gamma0[1:(p+q+1)]
+  lambda               <- gamma0[(p+q+2):(length(gamma0))]
+ 
+  listAbeta            <- listA  
+  listAbeta$lambda     <- lambda
+  
+  listAlambda          <- listA  
+  listAlambda$betaaux  <- betaaux
+   
+  a  <- gbeta(betaaux, listAbeta) 
+  b  <- glambda(lambda, listAlambda) 
+  
+  return(c(a, b)) 
+}
+
+g2betalambda <- function(gamma0, listA){
+  ys            <- listA$ys
+  xs            <- listA$xs
+  zs            <- listA$zs
+  p             <- ncol(xs)
+  q             <- ncol(zs)
+  idKs          <- listA$idKs
+  N             <- listA$N
+  n             <- listA$n
+  DataSample    <- listA$DataSample
+  Nkalls        <- DataSample$Nkalls
+  DataAg        <- listA$DataAg
+  fittedCountsA <- listA$fittedCountsA
+  
+  betaaux       <- gamma0[1:(p+q+1)]
+  beta0         <- betaaux[1]
+  beta1         <- betaaux[2:(p+1)]
+  beta2         <- betaaux[(p+2):(p+q+1)] 
+  
+  lambda        <- gamma0[(p+q+2):(length(gamma0))]
+  
+  nkaux         <- DataSample %>%  group_by(idKs)%>% summarise(count=n())
+  nk            <- nkaux  %>% pull(count)  
+  names(nk)     <- nkaux$idKs
+  nkall         <- nk[as.character(DataSample$idKs)]
+  
+  zA            <- cbind(DataAg$zc1A, DataAg$zc2A, DataAg$zc3A)
+  zzA           <- cbind(DataAg$zc0A, DataAg$zc1A, DataAg$zc2A, DataAg$zc3A)
+  rownames(zzA) <- DataAg$idK
+  zzA_samp      <- zzA[as.character(DataSample$idKs), ]
+  
+  logit_samp    <- beta0 + as.matrix(xs) %*% beta1 + as.matrix(zs) %*% beta2
+  mu_samp       <- exp(logit_samp)/(1 + exp(logit_samp))
+  
+  muast_zA      <- fittedCountsA 
+  muastA_samp   <- muast_zA[as.character(DataSample$idKs)]
+  
+  XX            <- cbind(1, xs, zs)
+  
+  Aaux          <- (zzA_samp %*% lambda)  * Nkalls
+  Baux          <- nkall + (zzA_samp %*% lambda)  * muastA_samp
+  devmudevbeta  <- XX * as.vector(mu_samp * ( 1 - mu_samp ))
+  
+  nom           <- zzA_samp * Nkalls * nkall
+  denom         <- (Baux - (Aaux * mu_samp))^{2}
+  
+  aux           <-  nom / as.vector(denom)  
+  aux2          <- t(aux) %*% devmudevbeta
+  aux2/n 
+}
+
+  
+g2lambdabeta <- function(gamma0, listA){
+  ys            <- listA$ys
+  xs            <- listA$xs
+  zs            <- listA$zs
+  p             <- ncol(xs)
+  q             <- ncol(zs)
+  idKs          <- listA$idKs
+  N             <- listA$N
+  n             <- listA$n
+  DataSample    <- listA$DataSample
+  Nkalls        <- DataSample$Nkalls
+  DataAg        <- listA$DataAg
+  fittedCountsA <- listA$fittedCountsA
+  
+  betaaux       <- gamma0[1:(p+q+1)]
+  beta0         <- betaaux[1]
+  beta1         <- betaaux[2:(p+1)]
+  beta2         <- betaaux[(p+2):(p+q+1)] 
+  
+  lambda        <- gamma0[(p+q+2):(length(gamma0))]
+  
+  nkaux         <- DataSample %>%  group_by(idKs)%>% summarise(count=n())
+  nk            <- nkaux  %>% pull(count)  
+  names(nk)     <- nkaux$idKs
+  nkall         <- nk[as.character(DataSample$idKs)]
+  
+  zA            <- cbind(DataAg$zc1A, DataAg$zc2A, DataAg$zc3A)
+  zzA           <- cbind(DataAg$zc0A, DataAg$zc1A, DataAg$zc2A, DataAg$zc3A)
+  rownames(zzA) <- DataAg$idK
+  zzA_samp      <- zzA[as.character(DataSample$idKs), ]
+  
+  logit_samp    <- beta0 + as.matrix(xs) %*% beta1 + as.matrix(zs) %*% beta2
+  mu_samp       <- exp(logit_samp)/(1 + exp(logit_samp))
+  
+  muast_zA      <- fittedCountsA 
+  muastA_samp   <- muast_zA[as.character(DataSample$idKs)]
+  
+  XX            <- cbind(1, xs, zs)
+  
+  devmudevbeta  <- XX * as.vector(mu_samp * ( 1 - mu_samp ))
+  
+  AAaux         <- zzA_samp * Nkalls
+  BBaux         <- (zzA_samp * muastA_samp) - (zzA_samp * Nkalls * as.vector(mu_samp))
+  
+  nom           <- AAaux * nkall
+  denom         <- ( nkall +  (BBaux %*% lambda) )^{2}  
+  
+  aux           <-  nom / as.vector(denom)  
+  aux2          <- t(aux) %*% devmudevbeta
+  t( aux2 )/n
+}
+
+
+g2betalambdaALL <- function(gamma0, listA){
+  betaaux              <- gamma0[1:(p+q+1)]
+  lambda               <- gamma0[(p+q+2):(length(gamma0))]
+  
+  listAbeta            <- listA  
+  listAbeta$lambda     <- lambda
+  
+  listAlambda          <- listA  
+  listAlambda$betaaux  <- betaaux
+  
+  a   <- g2beta(betaaux, listAbeta) 
+  ba  <- g2betalambda(gamma0, listA) 
+  ab  <- g2lambdabeta(gamma0, listA) 
+  b   <- g2lambda(lambda, listAlambda) 
+  
+  H   <- rbind(cbind(a, ab), cbind(ba, b))
+  return(H)  
+}
+
+
+NRbetalambda <- function(gamma0, listA){
+  betaaux              <- gamma0[1:(p+q+1)]
+  lambda               <- gamma0[(p+q+2):(length(gamma0))]
+ 
+  eps       <- 1
+  eps0      <- 0.00001
+  gammaold  <-  gamma0 
+  listAbeta <- list(ys=ys, xs=xs, zs=zs, idKs=idKs, N=N, n=n, DataSample=DataSample, DataAg=DataAg, fittedCountsA=fittedCountsA, betaaux=betaaux)
+  l=1
+  
+  maxit    <- 100
+  
+  while (eps >  eps0) {
+    solveg2betalambdaaux  <- solve(g2betalambdaALL(gammaold, listA= listA)) 
+    gbetalambdaaux        <- gbetalambda(gammaold,listA= listA)   
+    
+    gammanew              <- gammaold - as.vector(solveg2betalambdaaux %*% gbetalambdaaux)
+    eps                   <- max(abs(gammanew - gammaold))
+    
+    gammaold              <- gammanew 
+   
+    if(l==maxit){stop("Error:maxit reached")}
+    l=l+1
+  }
+  gammaold  
+}
+
+
+# individual function
+
+glambda_ind <- function(gamma0, listA){
+  ys            <- listA$ys
+  xs            <- listA$xs
+  zs            <- listA$zs
+  p             <- ncol(xs)
+  q             <- ncol(zs)
+  idKs          <- listA$idKs
+  N             <- listA$N
+  n             <- listA$n
+  DataSample    <- listA$DataSample
+  Nkalls        <- DataSample$Nkalls
+  DataAg        <- listA$DataAg
+  fittedCountsA <- listA$fittedCountsA
+  betaaux       <- listA$betaaux 
+  beta0         <- betaaux[1]
+  beta1         <- betaaux[2:(p+1)]
+  beta2         <- betaaux[(p+2):(p+q+1)] 
+  
+  lambda        <- gamma0[1:(q+1)]
+  
+  nkaux         <- DataSample %>%  group_by(idKs)%>% summarise(count=n())
+  nk            <- nkaux  %>% pull(count)  
+  names(nk)     <- nkaux$idKs
+  nkall         <- nk[as.character(DataSample$idKs)]
+  
+  zA            <- cbind(DataAg$zc1A, DataAg$zc2A, DataAg$zc3A)
+  zzA           <- cbind(DataAg$zc0A, DataAg$zc1A, DataAg$zc2A, DataAg$zc3A)
+  rownames(zzA) <- DataAg$idK
+  zzA_samp      <- zzA[as.character(DataSample$idKs), ]
+  
+  logit_samp    <- beta0 + as.matrix(xs) %*% beta1 + as.matrix(zs) %*% beta2
+  mu_samp       <- exp(logit_samp)/(1 + exp(logit_samp))
+  
+  muast_zA      <- fittedCountsA 
+  muastA_samp   <- muast_zA[as.character(DataSample$idKs)]
+  
+  KKK           <- 1
+  aux_num       <- (zzA_samp  * as.vector( Nkalls * (mu_samp  - (muastA_samp / Nkalls))))/KKK
+  aux_denom     <- nkall - ((zzA_samp %*% lambda/KKK)  * Nkalls * (mu_samp  - muastA_samp/Nkalls ))
+  
+  aux           <-  aux_num/as.vector(aux_denom)
+  aux/n
+}
+
+
+gbeta_ind <- function(gamma0, listA){
+  ys            <- listA$ys
+  xs            <- listA$xs
+  zs            <- listA$zs
+  p             <- ncol(xs)
+  q             <- ncol(zs)
+  idKs          <- listA$idKs
+  N             <- listA$N
+  n             <- listA$n
+  DataSample    <- listA$DataSample
+  Nkalls        <- DataSample$Nkalls
+  DataAg        <- listA$DataAg
+  fittedCountsA <- listA$fittedCountsA
+  lambda        <- listA$lambda 
+  
+  betaaux       <- gamma0[1:(p+q+1)]
+  beta0         <- betaaux[1]
+  beta1         <- betaaux[2:(p+1)]
+  beta2         <- betaaux[(p+2):(p+q+1)] 
+  
+  nkaux         <- DataSample %>%  group_by(idKs)%>% summarise(count=n())
+  nk            <- nkaux  %>% pull(count)  
+  names(nk)     <- nkaux$idKs
+  nkall         <- nk[as.character(DataSample$idKs)]
+  
+  zA            <- cbind(DataAg$zc1A, DataAg$zc2A, DataAg$zc3A)
+  zzA           <- cbind(DataAg$zc0A, DataAg$zc1A, DataAg$zc2A, DataAg$zc3A)
+  rownames(zzA) <- DataAg$idK
+  zzA_samp      <- zzA[as.character(DataSample$idKs), ]
+  
+  logit_samp    <- beta0 + as.matrix(xs) %*% beta1 + as.matrix(zs) %*% beta2
+  mu_samp       <- exp(logit_samp)/(1 + exp(logit_samp))
+  
+  muast_zA      <- fittedCountsA 
+  muastA_samp   <- muast_zA[as.character(DataSample$idKs)]  ## thsi was divided by Nks, this was a mistake-
+  
+  XX            <- cbind(1, xs, zs)
+  
+  devlogfbeta   <- as.matrix(XX) *   as.vector(ys - mu_samp) 
+  devlogfbeta2  <- as.matrix(XX) *   as.vector(1 - mu_samp)*as.vector( mu_samp) 
+  
+  Aaux          <- (zzA_samp %*% lambda)  * Nkalls
+  Baux          <-   (  Aaux /Nkalls)  * muastA_samp
+  
+  devlogDenom   <- as.vector(Aaux / (nkall - ( Aaux*( mu_samp-  muastA_samp/Nkalls) ))) * devlogfbeta2
+  
+  final         <- devlogfbeta + devlogDenom
+  final/n
+}
+
+
+gbetalambda_ind <- function(gamma0, listA){
+  betaaux              <- gamma0[1:(p+q+1)]
+  lambda               <- gamma0[(p+q+2):(length(gamma0))]
+  
+  listAbeta            <- listA  
+  listAbeta$lambda     <- lambda
+  
+  listAlambda          <- listA  
+  listAlambda$betaaux  <- betaaux
+  
+  a  <- gbeta_ind(betaaux, listAbeta) 
+  b  <- glambda_ind(lambda, listAlambda) 
+  
+  return(cbind(a, b))  
+}
+
+J2aux2 <- function(idK, score, xs,zs){ # covariance matrix of sast_ind 
+  p   <- ncol(xs)
+  q   <- ncol(zs)
+  pq1 <- p + q + 1
+  pl  <-  q + 1
+  aK  <- 0
+  for (K in unique(idK)){
+    idKaux <-  idK == K
+    sumK   <-  colSums( matrix(score[idKaux, ], sum(idK==K), pq1+pl, byrow=F) ) 
+    aK     <- aK + sumK %*% t( sumK )
+  }
+  aK
+}
+
+
